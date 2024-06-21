@@ -1,8 +1,5 @@
-import torch
-import torch.nn as nn
-import torch.optim as optim
 from torchvision import models, transforms
-from torch.utils.data import DataLoader, Dataset
+from torch.utils.data import Dataset
 from torchvision.datasets import ImageFolder
 from torchvision.transforms import ToTensor
 from sklearn.metrics import confusion_matrix, classification_report
@@ -11,8 +8,6 @@ import matplotlib.pyplot as plt
 import os
 import seaborn as sns
 from PIL import Image
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 
 train_transform = transforms.Compose([
     transforms.Resize((224, 224)),
@@ -52,7 +47,7 @@ class BrainTumorDataset(Dataset):
             image = self.transform(image)
         
         return image, label
-    
+
 #create dataset instances
 train_dataset = BrainTumorDataset(root_dir=r'..\Brain-MRI-Dataset\Training', transform=train_transform)
 test_dataset = BrainTumorDataset(root_dir=r'..\Brain-MRI-Dataset\Testing', transform=test_transform)
@@ -88,7 +83,3 @@ def data_distribution_over_each_class(train_dataset):
     plt.pie(class_counts, labels=train_dataset.classes, autopct='%1.1f%%', colors=colors)
     plt.title('Data Distribution over Each Class')
     plt.show()
-
-# Example usage (assuming you have a train_dataset variable):
-
-data_distribution_over_each_class(train_dataset)

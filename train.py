@@ -6,6 +6,9 @@ from cnnModel import CNNModel
 import torch.nn as nn
 import torch.optim as optim
 import os
+from sklearn.metrics import classification_report, confusion_matrix
+import matplotlib.pyplot as plt
+import seaborn as sns
 
 model = CNNModel().to(device)
 criterion = nn.CrossEntropyLoss()
@@ -74,5 +77,21 @@ def test_model(model):
     print(f"Accuracy on test set: {accuracy:.4f}")
     
     return true_labels, predictions
+print(device)
 #model training
 train_model(model, criterion, optimizer, num_epochs=10, save_path=save_path)
+#model prediction
+true_labels, predictions = test_model(model)
+#performance evaluation
+print("Classification Report:")
+print(classification_report(true_labels, predictions, target_names=['glioma', 'meningioma', 'notumor', 'pituitary']))
+#confusion matrix 
+cm = confusion_matrix(true_labels, predictions)
+
+# Plotting the confusion matrix
+plt.figure(figsize=(8, 6))
+sns.heatmap(cm, annot=True, cmap='Blues', fmt='d', xticklabels=['glioma', 'meningioma', 'notumor', 'pituitary'], yticklabels=['glioma', 'meningioma', 'notumor', 'pituitary'])
+plt.title('Confusion Matrix')
+plt.xlabel('Predicted Label')
+plt.ylabel('True Label')
+plt.show()

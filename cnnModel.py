@@ -1,15 +1,5 @@
-from dataLoader import BrainTumorDataset, train_dataset, test_dataset
-from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
-import torch.optim as optim
-import os
-
-device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
-
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
-
 
 class CNNModel(nn.Module):
     def __init__(self):
@@ -29,12 +19,3 @@ class CNNModel(nn.Module):
         x = nn.functional.relu(self.fc1(x))
         x = self.fc2(x)
         return x
-
-model = CNNModel().to(device)
-criterion = nn.CrossEntropyLoss()
-optimizer = optim.Adam(model.parameters(), lr=0.001)
-
-save_path = 'Trained Model/trained_model.pth'
-
-# Ensure the directory exists before saving
-os.makedirs(os.path.dirname(save_path), exist_ok=True)

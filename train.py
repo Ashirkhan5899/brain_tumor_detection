@@ -25,12 +25,9 @@ test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
 #Pushing the CNN model to the device which can be either CPU or GPU
 
 
-save_path = 'Trained Model/trained_model.pth' #the path where the trained will save
-
-# Ensure the directory exists before saving
-os.makedirs(os.path.dirname(save_path), exist_ok=True)
-
 def train_model(model, criterion, optimizer, num_epochs=10, save_path='trained_model.pth'):
+    # Ensure the directory exists before saving
+    os.makedirs(os.path.dirname(save_path), exist_ok=True)
     print("Model training is started...")
     model.train()
     best_accuracy = 0.0  # Track best accuracy to save the best model
@@ -121,6 +118,7 @@ def choose_model():
     
     if choice == '1':
         print("You chose to train a CNN model.")
+        save_path = 'Trained Model/cnn_trained_model.pth' #the path where the trained will save
         #model training
         model = CNNModel().to(device)
         criterion = nn.CrossEntropyLoss()  #loss function for the categorical classification
@@ -128,6 +126,7 @@ def choose_model():
         model = train_model(model, criterion, optimizer, num_epochs=10, save_path=save_path)
     elif choice == '2':
         print("You chose to train a ResNet50 model.")
+        save_path = 'Trained Model/RestNet50_trained_model.pth'
         # Move model to the device
         resnet50 = resNet_model()
         resnet50 = resnet50.to(device)
@@ -137,6 +136,7 @@ def choose_model():
         model = train_model(resnet50, criterion, optimizer, num_epochs=10, save_path=save_path)
     elif choice == '3':
         print("You chose to train a VGG16 model.")
+        save_path = 'Trained Model/VGG16_trained_model.pth'
         # Move model to the device
         vgg16 = vgg_model()
         vgg16 = vgg16.to(device)
@@ -146,6 +146,7 @@ def choose_model():
         model = train_model(vgg16, criterion, optimizer, num_epochs=10, save_path=save_path)
     elif choice == '4':
         print("You chose to train a MobileNet_V3 model.")
+        save_path = 'Trained Model/MobileNetV3_trained_model.pth'
         # Move model to the device
         mobilenet_v3 = mobileNet_model()
         mobilenet_v3 = mobilenet_v3.to(device)

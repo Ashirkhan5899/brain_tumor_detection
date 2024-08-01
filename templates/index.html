@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Brain Tumor Detection</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f4f4f4;
+        }
+        .container {
+            background-color: white;
+            padding: 20px;
+            border-radius: 15px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+            text-align: center;
+            width: 300px;
+        }
+        .progress-circle {
+            position: relative;
+            width: 150px;
+            height: 150px;
+            margin: 20px auto;
+        }
+        .progress-circle .progress {
+            stroke-width: 10;
+            stroke-dasharray: 0 100;
+            transition: stroke-dasharray 1.5s, stroke 1.5s;
+        }
+        .progress-circle .bg {
+            stroke: #f3f3f3;
+            background-color: #45a049;
+            stroke-width: 10;
+        }
+        .progress-circle text {
+            font-size: 20px;
+            font-weight: bold;
+            fill: #4caf50;
+        }
+        #uploaded-image {
+            max-width: 100%;
+            height: auto;
+            align-items: center;
+            margin: 20px 0;
+            align-items: center;
+            border-radius: 10px;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+        }
+        .btn {
+            background-color: #4caf50;
+            color: white;
+            border: none;
+            padding: 10px 20px;
+            text-align: center;
+            text-decoration: none;
+            display: inline-block;
+            font-size: 16px;
+            margin: 10px 2px;
+            cursor: pointer;
+            border-radius: 5px;
+            transition: background-color 0.3s;
+        }
+        .btn:hover {
+            background-color: #45a049;
+        }
+        .detection-message {
+            display: none;
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 20px;
+        }
+        .warning {
+            color: red;
+            display: inline-block;
+            margin-left: 10px;
+        }
+        /* Progress bar colors */
+        .progress.low {
+            stroke: #4caf50; /* Green */
+        }
+        .progress.medium {
+            stroke: #ffeb3b; /* Yellow */
+        }
+        .progress.high {
+            stroke: #f44336; /* Red */
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Brain Tumor Detection</h1>
+        <form id="upload-form">
+            <input type="file" id="file-input" accept="image/*" style="display: none;" required>
+            <button type="button" class="btn" onclick="document.getElementById('file-input').click();">Upload Image</button>
+            <img id="uploaded-image" src="" alt="Uploaded Image" style="display: none;">
+            <button type="submit" class="btn">Predict</button>
+        </form>
+        <div class="detection-message" id="detection-message">
+            <span id="message-text"></span>
+            <span id="tumor-class"></span>
+            <span class="warning" id="warning-sign" style="display: none;">&#9888;</span>
+        </div>
+        <div class="progress-circle" id="progress-circle">
+            <svg width="150" height="150">
+                <circle cx="75" cy="75" r="65" class="bg"/>
+                <circle cx="75" cy="75" r="65" class="progress low"/>
+                <text x="75" y="85" text-anchor="middle">0%</text>
+            </svg>
+        </div>
+    </div>
+
+    <script>
+        const fileInput = document.getElementById('file-input');
+        const uploadedImage = document.getElementById('uploaded-image');
+        const detectionMessage = document.getElementById('detection-message');
+        const messageText = document.getElementById('message-text');
+        const tumorClass = document.getElementById('tumor-class');
+        const warningSign = document.getElementById('warning-sign');
+
+        fileInput.onchange = function() {
+            const file = fileInput.files[0];
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                uploadedImage.src = e.target.result;
+                uploadedImage.style.display = 'block';
+            }
+            reader.readAsDataURL(file);
+        };
+
+        document.getElementById('upload-form').onsubmit = async function(event) {
+            event.preventDefault();
+
+            const file = fileInput.files[0];
+            const formData = new FormData();
+            formData.append('file', file);
+
+            const response = await fetch('/predict', {
+                method: 'POST',
+                body: formData
+            });
+            const result = await response.json();
+
+            if (result.error) {
+                alert(result.error);
+            } else {
+                const probability = result.probability * 100;
+                updateProgressCircle(probability);
+
+                // Display detection message
+                if (probability >= 50) {
+                    messageText.textContent = 'Brain Tumor Detected';
+                    tumorClass.textContent = `Class: ${result.class}`;
+                    warningSign.style.display = 'inline-block';
+                } else {
+                    messageText.textContent = 'No Brain Tumor Detected';
+                    tumorClass.textContent = `Class: ${result.class}`;
+                    warningSign.style.display =  'none';
+                }
+                detectionMessage.style.display = 'block';
+            }
+        };
+
+        function updateProgressCircle(percentage) {
+            const progress = document.querySelector('.progress');
+            const text = document.querySelector('.progress-circle text');
+            const radius = 65;
+            const circumference = 2 * Math.PI * radius;
+            const offset = circumference - (percentage / 100) * circumference;
+            progress.style.strokeDasharray = `${circumference - offset} ${offset}`;
+            
+            // Display percentage with float precision
+            text.textContent = `${percentage.toFixed(2)}%`;
+
+            // Change progress bar color based on percentage
+            if (percentage >= 70) {
+                progress.classList.add('high');
+                progress.classList.remove('medium', 'low');
+            } else if (percentage >= 40) {
+                progress.classList.add('medium');
+                progress.classList.remove('high', 'low');
+            } else {
+                progress.classList.add('low');
+                progress.classList.remove('high', 'medium');
+            }
+        }
+    </script>
+</body>
+</html>

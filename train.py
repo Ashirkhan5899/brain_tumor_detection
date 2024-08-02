@@ -189,7 +189,7 @@ def choose_model():
         model = CNNModel().to(device)
         criterion = nn.CrossEntropyLoss()  #loss function for the categorical classification
         optimizer = optim.Adam(model.parameters(), lr=0.001)   #definging the adam optimizer by setting some basic parameters
-        model = train_model(model, criterion, optimizer, num_epochs=1, save_path=save_path)
+        model = train_model(model, criterion, optimizer, num_epochs=10, save_path=save_path)
     elif choice == '2':
         print("You chose to train a ResNet50 model.")
         save_path = 'Trained Model/RestNet50_trained_model.pth'

@@ -10,6 +10,9 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 from tqdm.auto import tqdm
 from otherModels import vgg_model, resNet_model, mobileNet_model
+from sklearn.metrics import roc_curve, auc
+from sklearn.preprocessing import label_binarize
+import numpy as np
 
 #specifying the device such as CPU or GPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -72,6 +75,8 @@ def test_model(model):
     total = 0
     predictions = []
     true_labels = []
+    y_score = []
+
     with torch.no_grad():
         for inputs, labels in tqdm(test_loader):
             inputs, labels = inputs.to(device), labels.to(device)
@@ -82,27 +87,88 @@ def test_model(model):
             
             predictions.extend(predicted.cpu().numpy())
             true_labels.extend(labels.cpu().numpy())
-    
+            y_score.extend(outputs.cpu().numpy())
+
     accuracy = correct / total
     print(f"Accuracy on test set: {accuracy:.4f}")
-    return true_labels, predictions
+    return true_labels, predictions, y_score
 
-def dataVisualization(true_labels, predictions):
-    #model prediction
+
+def dataVisualization(true_labels, predictions, y_score):
     target_names = ['glioma', 'meningioma', 'notumor', 'pituitary']
-    #true_labels, predictions = test_model(model)
-    #performance evaluation
-    print("Classification Report:")
-    print(classification_report(true_labels, predictions, target_names=['glioma', 'meningioma', 'notumor', 'pituitary']))
-    #confusion matrix 
-    cm = confusion_matrix(true_labels, predictions)
 
-    # Plotting the confusion matrix
-    plt.figure(figsize=(8, 6))
-    sns.heatmap(cm, annot=True, cmap='Blues', fmt='d', xticklabels=['glioma', 'meningioma', 'notumor', 'pituitary'], yticklabels=['glioma', 'meningioma', 'notumor', 'pituitary'])
-    plt.title('Confusion Matrix')
-    plt.xlabel('Predicted Label')
-    plt.ylabel('True Label')
+    # Print classification report
+    print("Classification Report:")
+    print(classification_report(true_labels, predictions, target_names=target_names))
+
+    # Calculate confusion matrix
+    cm = confusion_matrix(true_labels, predictions)
+    # Plot confusion matrix using matplotlib
+    fig, ax = plt.subplots(figsize=(8, 6))
+    im = ax.imshow(cm, interpolation='nearest', cmap='Blues')
+    ax.figure.colorbar(im, ax=ax)
+    ax.set(xticks=np.arange(cm.shape[1]),
+        yticks=np.arange(cm.shape[0]),
+        xticklabels=target_names,
+        yticklabels=target_names,
+        title='Confusion Matrix',
+        ylabel='True Label',
+        xlabel='Predicted Label')
+
+    # Rotate the tick labels and set their alignment.
+    plt.setp(ax.get_xticklabels(), rotation=45, ha="right",
+            rotation_mode="anchor")
+
+    # Loop over data dimensions and create text annotations.
+    fmt = 'd'
+    thresh = cm.max() / 2.
+    for i in range(cm.shape[0]):
+        for j in range(cm.shape[1]):
+            ax.text(j, i, format(cm[i, j], fmt),
+                    ha="center", va="center",
+                    color="white" if cm[i, j] > thresh else "black")
+    fig.tight_layout()
+    plt.show()
+
+    # Binarize the output
+    y_true = label_binarize(true_labels, classes=[0, 1, 2, 3])
+    n_classes = y_true.shape[1]
+
+    # Convert y_score to numpy array
+    y_score = np.array(y_score)
+
+    # Compute ROC curve and ROC area for each class
+    fpr = dict()
+    tpr = dict()
+    roc_auc = dict()
+    for i in range(n_classes):
+        fpr[i], tpr[i], _ = roc_curve(y_true[:, i], y_score[:, i])
+        roc_auc[i] = auc(fpr[i], tpr[i])
+
+    # Compute micro-average ROC curve and ROC area
+    fpr["micro"], tpr["micro"], _ = roc_curve(y_true.ravel(), y_score.ravel())
+    roc_auc["micro"] = auc(fpr["micro"], tpr["micro"])
+
+    # Plot ROC curve
+    plt.figure(figsize=(10, 8))
+    colors = ['aqua', 'darkorange', 'cornflowerblue', 'green']
+    for i, color in zip(range(n_classes), colors):
+        plt.plot(fpr[i], tpr[i], color=color, lw=2,
+                 label='{0} (area = {1:0.2f})'
+                 ''.format(target_names[i], roc_auc[i]))
+
+    plt.plot(fpr["micro"], tpr["micro"],
+             label='micro-average ROC curve (area = {0:0.2f})'
+                   ''.format(roc_auc["micro"]),
+             color='deeppink', linestyle=':', linewidth=4)
+
+    plt.plot([0, 1], [0, 1], 'k--', lw=2)
+    plt.xlim([0.0, 1.0])
+    plt.ylim([0.0, 1.05])
+    plt.xlabel('False Positive Rate')
+    plt.ylabel('True Positive Rate')
+    plt.title('Receiver Operating Characteristic (ROC) Curve')
+    plt.legend(loc="lower right")
     plt.show()
 
 #model choosing
@@ -123,7 +189,7 @@ def choose_model():
         model = CNNModel().to(device)
         criterion = nn.CrossEntropyLoss()  #loss function for the categorical classification
         optimizer = optim.Adam(model.parameters(), lr=0.001)   #definging the adam optimizer by setting some basic parameters
-        model = train_model(model, criterion, optimizer, num_epochs=10, save_path=save_path)
+        model = train_model(model, criterion, optimizer, num_epochs=1, save_path=save_path)
     elif choice == '2':
         print("You chose to train a ResNet50 model.")
         save_path = 'Trained Model/RestNet50_trained_model.pth'
@@ -163,9 +229,9 @@ def main():
     print(f'Device detected for training: {device}')
     model = choose_model() #select model and train
     #model prediction
-    true_labels, predictions = test_model(model)
+    true_labels, predictions, y_score = test_model(model)
     # Data visualization using confusion materix 
-    dataVisualization(true_labels=true_labels, predictions=predictions)
+    dataVisualization(true_labels=true_labels, predictions=predictions, y_score=y_score)
 
 if __name__ == "__main__":
     main()

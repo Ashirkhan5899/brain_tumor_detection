@@ -13,6 +13,8 @@ from otherModels import vgg_model, resNet_model, mobileNet_model
 from sklearn.metrics import roc_curve, auc
 from sklearn.preprocessing import label_binarize
 import numpy as np
+import pytorch_lightning as pl
+from pytorch_lightning.callbacks import EarlyStopping, ModelCheckpoint, Callback
 
 #specifying the device such as CPU or GPU
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
@@ -22,49 +24,73 @@ train_dataset = BrainTumorDataset(root_dir=r'..\Brain-MRI-Dataset\Training', tra
 test_dataset = BrainTumorDataset(root_dir=r'..\Brain-MRI-Dataset\Testing', transform=test_transform)
 
 #intializing the dataLoader for train and test dataset
-train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True)
-test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False)
+train_loader = DataLoader(train_dataset, batch_size=32, shuffle=True, num_workers=3, persistent_workers=True)
+test_loader = DataLoader(test_dataset, batch_size=32, shuffle=False, num_workers=3, persistent_workers=True)
 
 #Pushing the CNN model to the device which can be either CPU or GPU
 
+class MyModel(pl.LightningModule):
+    def __init__(self, model, criterion, optimizer_class, learning_rate=1e-3):
+        super(MyModel, self).__init__()
+        self.model = model
+        self.criterion = criterion
+        self.optimizer_class = optimizer_class
+        self.learning_rate = learning_rate
 
-def train_model(model, criterion, optimizer, num_epochs=10, save_path='trained_model.pth'):
-    # Ensure the directory exists before saving
-    os.makedirs(os.path.dirname(save_path), exist_ok=True)
-    print("Model training is started...")
-    model.train()
-    best_accuracy = 0.0  # Track best accuracy to save the best model
-    for epoch in range(num_epochs):
-        print(f'Epoch: {epoch+1}/{num_epochs}')
-        running_loss = 0.0
-        correct = 0
-        total = 0
-        
-        for inputs, labels in tqdm(train_loader):
-            inputs, labels = inputs.to(device), labels.to(device)
-            optimizer.zero_grad()
-            outputs = model(inputs)
-            loss = criterion(outputs, labels)
-            loss.backward()
-            optimizer.step()
-            running_loss += loss.item() * inputs.size(0)
-            
-            # Calculate accuracy
-            _, predicted = torch.max(outputs.data, 1)
-            total += labels.size(0)
-            correct += (predicted == labels).sum().item()
-        
-        epoch_loss = running_loss / len(train_dataset)
-        epoch_accuracy = correct / total
-        
-        print(f"Epoch [{epoch+1}/{num_epochs}], Loss: {epoch_loss:.4f}, Accuracy: {epoch_accuracy:.4f}")
-        
-        # Save the model if it has the best accuracy
-        if epoch_accuracy > best_accuracy:
-            best_accuracy = epoch_accuracy
-            torch.save(model.state_dict(), save_path)
-    print(f"Training complete. Best accuracy: {best_accuracy:.4f}. Model saved to {save_path}")
-    return model
+    def forward(self, x):
+        return self.model(x)
+
+    def training_step(self, batch, batch_idx):
+        inputs, labels = batch
+        outputs = self.model(inputs)
+        loss = self.criterion(outputs, labels)
+        _, predicted = torch.max(outputs.data, 1)
+        acc = (predicted == labels).float().mean()
+        self.log('train_loss', loss, on_epoch=True)
+        self.log('train_acc', acc, on_epoch=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        inputs, labels = batch
+        outputs = self.model(inputs)
+        loss = self.criterion(outputs, labels)
+        _, predicted = torch.max(outputs.data, 1)
+        acc = (predicted == labels).float().mean()
+        self.log('val_loss', loss, on_epoch=True)
+        self.log('val_acc', acc, on_epoch=True)
+        return loss
+
+    def configure_optimizers(self):
+        optimizer = self.optimizer_class(self.model.parameters(), lr=self.learning_rate)
+        return optimizer
+    
+#customizing the callback class to update user after each epoch.
+class BestMetricsCallback(Callback):
+    def __init__(self):
+        super().__init__()
+        self.best_val_loss = float('inf')
+        self.best_val_acc = 0.0
+
+    def on_validation_epoch_end(self, trainer, pl_module):
+        val_loss = trainer.callback_metrics['val_loss']
+        val_acc = trainer.callback_metrics['val_acc']
+
+        if val_loss < self.best_val_loss:
+            self.best_val_loss = val_loss
+            trainer.save_checkpoint('best_val_loss_checkpoint.ckpt')
+
+        if val_acc > self.best_val_acc:
+            self.best_val_acc = val_acc
+            trainer.save_checkpoint('best_val_acc_checkpoint.ckpt')
+
+        print(f"\nEpoch {trainer.current_epoch}: Best Val Loss: {self.best_val_loss:.4f}, Best Val Acc: {self.best_val_acc:.4f}")
+
+
+# Callbacks
+early_stopping_callback = EarlyStopping(monitor='val_loss', patience=5, mode='min')
+best_metric_callback = BestMetricsCallback()
+
+learning_rate = 1e-3
 
 #model evaluation
 
@@ -184,42 +210,87 @@ def choose_model():
     
     if choice == '1':
         print("You chose to train a CNN model.")
-        save_path = 'Trained Model/cnn_trained_model.pth' #the path where the trained will save
+        save_path = 'Trained Model/cnn_checkpoints' #the path where the trained will save
         #model training
         model = CNNModel().to(device)
         criterion = nn.CrossEntropyLoss()  #loss function for the categorical classification
-        optimizer = optim.Adam(model.parameters(), lr=0.001)   #definging the adam optimizer by setting some basic parameters
-        model = train_model(model, criterion, optimizer, num_epochs=10, save_path=save_path)
+        #optimizer = optim.Adam(model.parameters(), lr=0.001)   #definging the adam optimizer by setting some basic parameters
+        optimizer = optim.Adam
+        #initializing torch model
+        lightning_model = MyModel(model, criterion, optimizer, learning_rate)
+        #ensure that the directory is already present
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        #Defining checkpoint callback 
+        checkpoint_callback = ModelCheckpoint(dirpath=save_path, save_top_k=1, monitor='val_loss', mode='min')
+        # Trainer
+        trainer = pl.Trainer(max_epochs=50, callbacks=[early_stopping_callback, checkpoint_callback, best_metric_callback])
+        # Train the model
+        trainer.fit(lightning_model, train_loader, test_loader)
+        #model = train_model(model, criterion, optimizer, num_epochs=10, save_path=save_path)
     elif choice == '2':
         print("You chose to train a ResNet50 model.")
-        save_path = 'Trained Model/RestNet50_trained_model.pth'
+        save_path = 'Trained Model/RestNet50_checkpoints'
         # Move model to the device
         resnet50 = resNet_model()
         resnet50 = resnet50.to(device)
         # Define loss function and optimizer
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(resnet50.fc.parameters(), lr=0.001)
-        model = train_model(resnet50, criterion, optimizer, num_epochs=10, save_path=save_path)
+        optimizer = optim.Adam
+        #ensure that the directory is already present
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        #Defining checkpoint callback 
+        checkpoint_callback = ModelCheckpoint(dirpath=save_path, save_top_k=1, monitor='val_loss', mode='min')
+
+        #initializing torch model
+        lightning_model = MyModel(resnet50, criterion, optimizer, learning_rate)
+        # Trainer
+        trainer = pl.Trainer(max_epochs=50, callbacks=[early_stopping_callback, checkpoint_callback, best_metric_callback])
+        # Train the model
+        trainer.fit(lightning_model, train_loader, test_loader)
+        #model = train_model(resnet50, criterion, optimizer, num_epochs=10, save_path=save_path)
     elif choice == '3':
         print("You chose to train a VGG16 model.")
-        save_path = 'Trained Model/VGG16_trained_model.pth'
+        save_path = 'Trained Model/VGG16_Checkpoints'
         # Move model to the device
         vgg16 = vgg_model()
         vgg16 = vgg16.to(device)
         # Define loss function and optimizer
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(vgg16.classifier[6].parameters(), lr=0.001)
-        model = train_model(vgg16, criterion, optimizer, num_epochs=10, save_path=save_path)
+        optimizer = optim.Adam #(vgg16.classifier[6].parameters(), lr=0.001)
+
+        #ensure that the directory is already present
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        #Defining checkpoint callback 
+        checkpoint_callback = ModelCheckpoint(dirpath=save_path, save_top_k=1, monitor='val_loss', mode='min')
+
+        #initializing torch model
+        lightning_model = MyModel(resnet50, criterion, optimizer, learning_rate)
+        # Trainer
+        trainer = pl.Trainer(max_epochs=50, callbacks=[early_stopping_callback, checkpoint_callback, best_metric_callback])
+        # Train the model
+        trainer.fit(lightning_model, train_loader, test_loader)
+        #model = train_model(vgg16, criterion, optimizer, num_epochs=10, save_path=save_path)
     elif choice == '4':
         print("You chose to train a MobileNet_V3 model.")
-        save_path = 'Trained Model/MobileNetV3_trained_model.pth'
+        save_path = 'Trained Model/MobileNetV3_Checkpoints'
         # Move model to the device
         mobilenet_v3 = mobileNet_model()
         mobilenet_v3 = mobilenet_v3.to(device)
         # Define loss function and optimizer
         criterion = nn.CrossEntropyLoss()
-        optimizer = optim.Adam(mobilenet_v3.classifier[3].parameters(), lr=0.001)
-        model = train_model(mobilenet_v3, criterion, optimizer, num_epochs=10, save_path=save_path)
+        optimizer = optim.Adam #(mobilenet_v3.classifier[3].parameters(), lr=0.001)
+        #model = train_model(mobilenet_v3, criterion, optimizer, num_epochs=10, save_path=save_path)
+        #ensure that the directory is already present
+        os.makedirs(os.path.dirname(save_path), exist_ok=True)
+        #Defining checkpoint callback 
+        checkpoint_callback = ModelCheckpoint(dirpath=save_path, save_top_k=1, monitor='val_loss', mode='min')
+
+        #initializing torch model
+        lightning_model = MyModel(resnet50, criterion, optimizer, learning_rate)
+        # Trainer
+        trainer = pl.Trainer(max_epochs=50, callbacks=[early_stopping_callback, checkpoint_callback, best_metric_callback])
+        # Train the model
+        trainer.fit(lightning_model, train_loader, test_loader)
     else:
         print("Invalid choice. Please enter a number between 1 and 4.")
         choose_model()  # Ask again if the choice is invalid

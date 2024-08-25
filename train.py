@@ -264,7 +264,7 @@ def choose_model():
         checkpoint_callback = ModelCheckpoint(dirpath=save_path, save_top_k=1, monitor='val_loss', mode='min')
 
         #initializing torch model
-        lightning_model = MyModel(resnet50, criterion, optimizer, learning_rate)
+        lightning_model = MyModel(vgg16, criterion, optimizer, learning_rate)
         # Trainer
         trainer = pl.Trainer(max_epochs=50, callbacks=[early_stopping_callback, checkpoint_callback, best_metric_callback])
         # Train the model
@@ -286,7 +286,7 @@ def choose_model():
         checkpoint_callback = ModelCheckpoint(dirpath=save_path, save_top_k=1, monitor='val_loss', mode='min')
 
         #initializing torch model
-        lightning_model = MyModel(resnet50, criterion, optimizer, learning_rate)
+        lightning_model = MyModel(mobilenet_v3, criterion, optimizer, learning_rate)
         # Trainer
         trainer = pl.Trainer(max_epochs=50, callbacks=[early_stopping_callback, checkpoint_callback, best_metric_callback])
         # Train the model
